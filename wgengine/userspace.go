@@ -81,7 +81,7 @@ func (l *Loggify) Write(b []byte) (int, error) {
 
 func NewFakeUserspaceEngine(logf logger.Logf, listenPort uint16) (Engine, error) {
 	logf("Starting userspace wireguard engine (FAKE tuntap device).")
-	tundev := tstun.WrapTUN(logf, tstun.NewFakeTUN())
+	tundev := tstun.NewFakeTUN()
 	return NewUserspaceEngineAdvanced(logf, tundev, router.NewFake, listenPort)
 }
 
@@ -94,14 +94,13 @@ func NewUserspaceEngine(logf logger.Logf, tunname string, listenPort uint16) (En
 
 	logf("Starting userspace wireguard engine with tun device %q", tunname)
 
-	tun, err := tun.CreateTUN(tunname, minimalMTU)
+	tundev, err := tun.CreateTUN(tunname, minimalMTU)
 	if err != nil {
 		diagnoseTUNFailure(logf)
 		logf("CreateTUN: %v", err)
 		return nil, err
 	}
 	logf("CreateTUN ok.")
-	tundev := tstun.WrapTUN(logf, tun)
 
 	e, err := NewUserspaceEngineAdvanced(logf, tundev, router.New, listenPort)
 	if err != nil {
@@ -116,16 +115,16 @@ type RouterGen func(logf logger.Logf, wgdev *device.Device, tundev tun.Device) (
 
 // NewUserspaceEngineAdvanced is like NewUserspaceEngine but takes a pre-created TUN device and allows specifing
 // a custom router constructor and listening port.
-func NewUserspaceEngineAdvanced(logf logger.Logf, tundev *tstun.TUN, routerGen RouterGen, listenPort uint16) (Engine, error) {
+func NewUserspaceEngineAdvanced(logf logger.Logf, tundev tun.Device, routerGen RouterGen, listenPort uint16) (Engine, error) {
 	return newUserspaceEngineAdvanced(logf, tundev, routerGen, listenPort)
 }
 
-func newUserspaceEngineAdvanced(logf logger.Logf, tundev *tstun.TUN, routerGen RouterGen, listenPort uint16) (_ Engine, reterr error) {
+func newUserspaceEngineAdvanced(logf logger.Logf, tundev tun.Device, routerGen RouterGen, listenPort uint16) (_ Engine, reterr error) {
 	e := &userspaceEngine{
 		logf:    logf,
 		reqCh:   make(chan struct{}, 1),
 		waitCh:  make(chan struct{}),
-		tundev:  tundev,
+		tundev:  tstun.WrapTUN(logf, tundev),
 		pingers: make(map[wgcfg.Key]context.CancelFunc),
 	}
 	e.linkState, _ = getLinkState()
